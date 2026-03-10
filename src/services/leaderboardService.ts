@@ -12,8 +12,20 @@ interface DailyLogRow {
 
 interface ProfileRow {
   id: string
+  display_name: string | null
   apelido_publico: string | null
   nome: string | null
+  current_streak: number | null
+}
+
+interface PeriodLeaderboardRpcRow {
+  user_id: string | null
+  display_name: string | null
+  streak: number | null
+  questoes: number | null
+  flashcards: number | null
+  total_minutes: number | null
+  minutos_revisao: number | null
 }
 
 interface WeeklyLeaderboardRpcRow {
@@ -34,15 +46,8 @@ interface AggregatedUserMetrics {
   previous_window_metric: number
 }
 
-const currentUserId = import.meta.env.VITE_CURRENT_USER_ID as string | undefined
-const currentUserName = import.meta.env.VITE_CURRENT_USER_NAME as string | undefined
-
-const weeklyPeriodScale: Record<RankingPeriod, number> = {
-  today: 1 / 7,
-  week: 1,
-  month: 4,
-  all: 16,
-}
+const currentUserIdFromEnv = import.meta.env.VITE_CURRENT_USER_ID as string | undefined
+const currentUserNameFromEnv = import.meta.env.VITE_CURRENT_USER_NAME as string | undefined
 
 function formatDateKey(date: Date): string {
   const year = date.getFullYear()
@@ -135,6 +140,11 @@ function resolveTrend(
   return 'stable'
 }
 
+function parseNumericValue(value: unknown): number {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : 0
+}
+
 function isLikelyEmail(value: string): boolean {
   const normalized = value.trim().toLowerCase()
   if (!normalized.includes('@')) return false
@@ -144,11 +154,16 @@ function isLikelyEmail(value: string): boolean {
 function sanitizeDisplayName(value: string | null | undefined): string | null {
   const trimmed = value?.trim()
   if (!trimmed) return null
-
-  // Privacy rule: do not expose personal email as leaderboard name.
   if (isLikelyEmail(trimmed)) return null
-
   return trimmed
+}
+
+function pickPublicName(candidates: Array<string | null | undefined>, fallback: string): string {
+  for (const candidate of candidates) {
+    const safe = sanitizeDisplayName(candidate)
+    if (safe) return safe
+  }
+  return fallback
 }
 
 function avatarInitialFromName(name: string): string {
@@ -158,11 +173,6 @@ function avatarInitialFromName(name: string): string {
     .charAt(0)
     .toUpperCase()
   return firstLetter || '?'
-}
-
-function parseNumericValue(value: unknown): number {
-  const numeric = Number(value)
-  return Number.isFinite(numeric) ? numeric : 0
 }
 
 function buildStableIdFromName(name: string, index: number): string {
@@ -193,9 +203,8 @@ function extractTotalMinutesFromRpc(row: WeeklyLeaderboardRpcRow): number {
   ]
 
   for (const key of candidates) {
-    const value = row[key]
-    const numericValue = parseNumericValue(value)
-    if (numericValue > 0) return numericValue
+    const value = parseNumericValue(row[key])
+    if (value > 0) return value
   }
 
   const fallbackFromQuestions = parseNumericValue(row.questoes) * 2
@@ -203,8 +212,86 @@ function extractTotalMinutesFromRpc(row: WeeklyLeaderboardRpcRow): number {
   return Math.round(fallbackFromQuestions + fallbackFromReview)
 }
 
-function scaleWeeklyMetric(value: number, period: RankingPeriod): number {
-  return Math.max(Math.round(value * weeklyPeriodScale[period]), 0)
+async function resolveCurrentUserId(): Promise<string | undefined> {
+  const { data, error } = await supabase.auth.getUser()
+  if (error) return currentUserIdFromEnv
+  return data.user?.id ?? currentUserIdFromEnv
+}
+
+function isCurrentUser({
+  userId,
+  displayName,
+  currentUserId,
+}: {
+  userId: string
+  displayName: string
+  currentUserId?: string
+}): boolean {
+  if (currentUserId && userId === currentUserId) return true
+  if (
+    currentUserNameFromEnv &&
+    displayName.localeCompare(currentUserNameFromEnv, undefined, {
+      sensitivity: 'accent',
+    }) === 0
+  ) {
+    return true
+  }
+  return false
+}
+
+async function fetchFromPeriodRpc(
+  period: RankingPeriod,
+  category: RankingCategory,
+): Promise<RankingEntry[]> {
+  const { data, error } = await supabase.rpc('get_leaderboard_by_period', { p_period: period })
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const rows = (data ?? []) as PeriodLeaderboardRpcRow[]
+  if (!rows.length) return []
+
+  const currentUserId = await resolveCurrentUserId()
+  const entries: Omit<RankingEntry, 'position'>[] = []
+
+  rows.forEach((row, index) => {
+    const userId = row.user_id ?? `rpc-user-${index + 1}`
+    const displayName = pickPublicName([row.display_name], `Aluno ${index + 1}`)
+
+    const metrics = {
+      questions: parseNumericValue(row.questoes),
+      flashcards: parseNumericValue(row.flashcards),
+      total_minutes: parseNumericValue(row.total_minutes),
+      review_minutes: parseNumericValue(row.minutos_revisao),
+    }
+
+    const value = metricFromCategory(metrics, category)
+    if (value <= 0) return
+
+    entries.push({
+      id: userId,
+      display_name: displayName,
+      avatar_initial: avatarInitialFromName(displayName),
+      questions: metrics.questions,
+      flashcards: metrics.flashcards,
+      total_minutes: metrics.total_minutes,
+      review_minutes: metrics.review_minutes,
+      trend: resolveRpcTrend(parseNumericValue(row.streak)),
+      is_current_user: isCurrentUser({ userId, displayName, currentUserId }),
+      value,
+    })
+  })
+
+  return entries
+    .sort((a, b) => {
+      const diff = b.value - a.value
+      if (diff !== 0) return diff
+      return a.display_name.localeCompare(b.display_name)
+    })
+    .map((entry, index) => ({
+      ...entry,
+      position: index + 1,
+    }))
 }
 
 async function fetchFromDailyLogs(
@@ -270,7 +357,7 @@ async function fetchFromDailyLogs(
   const userIds = [...aggregatedByUser.keys()]
   const { data: profilesData, error: profilesError } = await supabase
     .from('profiles')
-    .select('id,apelido_publico,nome')
+    .select('id,display_name,apelido_publico,nome,current_streak')
     .in('id', userIds)
 
   const profileById = new Map(
@@ -279,6 +366,7 @@ async function fetchFromDailyLogs(
     ).map((profile) => [profile.id, profile]),
   )
 
+  const currentUserId = await resolveCurrentUserId()
   const entries: Omit<RankingEntry, 'position'>[] = []
 
   for (const userId of userIds) {
@@ -286,20 +374,13 @@ async function fetchFromDailyLogs(
     if (!metrics) continue
 
     const profile = profileById.get(userId)
-    const displayName =
-      sanitizeDisplayName(profile?.apelido_publico) ??
-      sanitizeDisplayName(profile?.nome) ??
-      `Aluno ${userId.slice(0, 4).toUpperCase()}`
+    const displayName = pickPublicName(
+      [profile?.display_name, profile?.apelido_publico, profile?.nome],
+      `Aluno ${userId.slice(0, 4).toUpperCase()}`,
+    )
 
     const categoryValue = metricFromCategory(metrics, category)
-    const isCurrentUser =
-      (currentUserId && userId === currentUserId) ||
-      (currentUserName &&
-        displayName.localeCompare(currentUserName, undefined, { sensitivity: 'accent' }) === 0)
-
-    if (categoryValue <= 0) {
-      continue
-    }
+    if (categoryValue <= 0) continue
 
     entries.push({
       id: userId,
@@ -310,7 +391,7 @@ async function fetchFromDailyLogs(
       total_minutes: metrics.total_minutes,
       review_minutes: metrics.review_minutes,
       trend: resolveTrend(period, metrics.current_window_metric, metrics.previous_window_metric),
-      is_current_user: Boolean(isCurrentUser),
+      is_current_user: isCurrentUser({ userId, displayName, currentUserId }),
       value: categoryValue,
     })
   }
@@ -328,7 +409,6 @@ async function fetchFromDailyLogs(
 }
 
 async function fetchFromWeeklyRpc(
-  period: RankingPeriod,
   category: RankingCategory,
 ): Promise<RankingEntry[]> {
   const { data, error } = await supabase.rpc('get_weekly_leaderboard')
@@ -342,48 +422,42 @@ async function fetchFromWeeklyRpc(
     return []
   }
 
+  const currentUserId = await resolveCurrentUserId()
   const entries: Omit<RankingEntry, 'position'>[] = []
 
   rows.forEach((row, index) => {
-    const displayName =
-      sanitizeDisplayName(row.nome) ??
-      sanitizeDisplayName(typeof row.display_name === 'string' ? row.display_name : null) ??
-      `Aluno ${index + 1}`
-
-    const questions = scaleWeeklyMetric(parseNumericValue(row.questoes), period)
-    const flashcards = scaleWeeklyMetric(parseNumericValue(row.flashcards), period)
-    const reviewMinutes = scaleWeeklyMetric(parseNumericValue(row.minutos_revisao), period)
-    const totalMinutes = scaleWeeklyMetric(extractTotalMinutesFromRpc(row), period)
-
-    const categoryValue = metricFromCategory(
-      {
-        questions,
-        flashcards,
-        total_minutes: totalMinutes,
-        review_minutes: reviewMinutes,
-      },
-      category,
+    const displayName = pickPublicName(
+      [row.nome, typeof row.display_name === 'string' ? row.display_name : null],
+      `Aluno ${index + 1}`,
     )
 
-    if (categoryValue <= 0) return
+    const metrics = {
+      questions: parseNumericValue(row.questoes),
+      flashcards: parseNumericValue(row.flashcards),
+      total_minutes: extractTotalMinutesFromRpc(row),
+      review_minutes: parseNumericValue(row.minutos_revisao),
+    }
 
-    const isCurrentUser =
-      (currentUserName &&
-        displayName.localeCompare(currentUserName, undefined, { sensitivity: 'accent' }) ===
-          0) ||
-      false
+    const value = metricFromCategory(metrics, category)
+    if (value <= 0) return
+
+    const syntheticUserId = buildStableIdFromName(displayName, index)
 
     entries.push({
-      id: buildStableIdFromName(displayName, index),
+      id: syntheticUserId,
       display_name: displayName,
       avatar_initial: avatarInitialFromName(displayName),
-      questions,
-      flashcards,
-      total_minutes: totalMinutes,
-      review_minutes: reviewMinutes,
+      questions: metrics.questions,
+      flashcards: metrics.flashcards,
+      total_minutes: metrics.total_minutes,
+      review_minutes: metrics.review_minutes,
       trend: resolveRpcTrend(parseNumericValue(row.streak)),
-      is_current_user: isCurrentUser,
-      value: categoryValue,
+      is_current_user: isCurrentUser({
+        userId: syntheticUserId,
+        displayName,
+        currentUserId,
+      }),
+      value,
     })
   })
 
@@ -403,16 +477,24 @@ export async function fetchLeaderboard(
   period: RankingPeriod,
   category: RankingCategory,
 ): Promise<RankingEntry[]> {
+  // 1) Best source: period-aware RPC with real totals by filter.
   try {
-    const dailyEntries = await fetchFromDailyLogs(period, category)
-    if (dailyEntries.length > 0) {
-      return dailyEntries
-    }
+    const periodRpcEntries = await fetchFromPeriodRpc(period, category)
+    if (periodRpcEntries.length > 0) return periodRpcEntries
   } catch {
-    // If direct read fails due to policy/permission, fallback to leaderboard RPC.
+    // ignore and continue fallback chain
   }
 
-  return fetchFromWeeklyRpc(period, category)
+  // 2) Direct table aggregate (works when policy/session allows).
+  try {
+    const dailyEntries = await fetchFromDailyLogs(period, category)
+    if (dailyEntries.length > 0) return dailyEntries
+  } catch {
+    // ignore and continue fallback chain
+  }
+
+  // 3) Last fallback: weekly RPC (without fake scaling to avoid inflated numbers).
+  return fetchFromWeeklyRpc(category)
 }
 
 export function subscribeToLeaderboardUpdates(onChange: () => void): () => void {

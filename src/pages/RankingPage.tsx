@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CategoryTabs } from '../components/ranking/CategoryTabs'
 import { CurrentUserCard } from '../components/ranking/CurrentUserCard'
+import { DisplayNameCard } from '../components/ranking/DisplayNameCard'
 import { EmptyLeaderboardState } from '../components/ranking/EmptyLeaderboardState'
 import { LeaderboardList } from '../components/ranking/LeaderboardList'
 import { PeriodTabs } from '../components/ranking/PeriodTabs'
@@ -105,6 +106,7 @@ export function RankingPage() {
                   period={activePeriod}
                   category={activeCategory}
                 />
+                <DisplayNameCard />
               </div>
             </div>
           ) : (
@@ -119,6 +121,7 @@ export function RankingPage() {
                   period={activePeriod}
                   category={activeCategory}
                 />
+                <DisplayNameCard />
               </div>
             </div>
           )
