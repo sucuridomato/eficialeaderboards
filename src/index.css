@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+:root {
+  --bg-base: #090c09;
+  --bg-surface: #121813;
+  --bg-surface-alt: #19221b;
+  --bg-card: #111711;
+  --text-primary: #f5f3ec;
+  --text-secondary: #b8bcb4;
+  --border-soft: rgba(229, 180, 91, 0.15);
+  --accent-gold: #e5b45b;
+  --accent-gold-soft: #a8813a;
+  --accent-green: #2f4d37;
+  --trend-up: #7ba784;
+  --trend-down: #9f7a5a;
+  --trend-stable: #7f887b;
+
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text-primary);
+  background: radial-gradient(circle at 20% 20%, #163120 0%, transparent 35%),
+    radial-gradient(circle at 80% 80%, #2f2410 0%, transparent 40%), var(--bg-base);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+}
