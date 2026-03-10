@@ -120,7 +120,6 @@ with normalized_period as (
     when 'semana' then 'week'
     when 'month' then 'month'
     when 'mes' then 'month'
-    when 'mês' then 'month'
     when 'all' then 'all'
     when 'geral' then 'all'
     else 'week'
