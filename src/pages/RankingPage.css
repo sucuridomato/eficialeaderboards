@@ -100,6 +100,13 @@
   font-size: 0.95rem;
 }
 
+.ranking-header__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.45rem;
+}
+
 .ranking-header__icon {
   flex: 0 0 auto;
   width: 46px;
@@ -115,6 +122,21 @@
   width: 24px;
   height: 24px;
   fill: var(--accent-gold);
+}
+
+.ranking-header__logout {
+  border: 1px solid rgba(229, 180, 91, 0.28);
+  background: rgba(16, 22, 17, 0.86);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 0.32rem 0.72rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.ranking-header__logout:hover {
+  color: var(--text-primary);
+  border-color: rgba(229, 180, 91, 0.54);
 }
 
 .ranking-filter-card {

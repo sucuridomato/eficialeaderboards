@@ -14,7 +14,11 @@ import {
 import type { RankingCategory, RankingEntry, RankingPeriod } from '../types/ranking'
 import './RankingPage.css'
 
-export function RankingPage() {
+interface RankingPageProps {
+  onSignOut: () => void | Promise<void>
+}
+
+export function RankingPage({ onSignOut }: RankingPageProps) {
   const [activePeriod, setActivePeriod] = useState<RankingPeriod>('week')
   const [activeCategory, setActiveCategory] = useState<RankingCategory>('questions')
   const [entries, setEntries] = useState<RankingEntry[]>([])
@@ -71,7 +75,7 @@ export function RankingPage() {
       <div className="ranking-shell__glow ranking-shell__glow--bottom" aria-hidden />
 
       <div className="ranking-page">
-        <RankingHeader />
+        <RankingHeader onSignOut={onSignOut} />
         <PeriodTabs activePeriod={activePeriod} onChange={setActivePeriod} />
         <CategoryTabs activeCategory={activeCategory} onChange={setActiveCategory} />
 
