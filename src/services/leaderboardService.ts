@@ -135,9 +135,20 @@ function resolveTrend(
   return 'stable'
 }
 
+function isLikelyEmail(value: string): boolean {
+  const normalized = value.trim().toLowerCase()
+  if (!normalized.includes('@')) return false
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)
+}
+
 function sanitizeDisplayName(value: string | null | undefined): string | null {
   const trimmed = value?.trim()
-  return trimmed ? trimmed : null
+  if (!trimmed) return null
+
+  // Privacy rule: do not expose personal email as leaderboard name.
+  if (isLikelyEmail(trimmed)) return null
+
+  return trimmed
 }
 
 function avatarInitialFromName(name: string): string {
@@ -278,7 +289,7 @@ async function fetchFromDailyLogs(
     const displayName =
       sanitizeDisplayName(profile?.apelido_publico) ??
       sanitizeDisplayName(profile?.nome) ??
-      `Usuario ${userId.slice(0, 4)}`
+      `Aluno ${userId.slice(0, 4).toUpperCase()}`
 
     const categoryValue = metricFromCategory(metrics, category)
     const isCurrentUser =
@@ -337,7 +348,7 @@ async function fetchFromWeeklyRpc(
     const displayName =
       sanitizeDisplayName(row.nome) ??
       sanitizeDisplayName(typeof row.display_name === 'string' ? row.display_name : null) ??
-      `Usuário ${index + 1}`
+      `Aluno ${index + 1}`
 
     const questions = scaleWeeklyMetric(parseNumericValue(row.questoes), period)
     const flashcards = scaleWeeklyMetric(parseNumericValue(row.flashcards), period)
@@ -398,7 +409,7 @@ export async function fetchLeaderboard(
       return dailyEntries
     }
   } catch {
-    // Se a leitura direta falhar por política/permissão, segue para RPC de leaderboard.
+    // If direct read fails due to policy/permission, fallback to leaderboard RPC.
   }
 
   return fetchFromWeeklyRpc(period, category)
