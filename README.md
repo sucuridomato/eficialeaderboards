@@ -22,7 +22,7 @@ npm run build
 
 ## Script SQL (Supabase)
 
-Para habilitar nome publico editavel e ranking por periodo com dados reais, rode este script no SQL Editor do Supabase:
+Para habilitar salvamento de nome publico editavel (conta nova e conta existente), rode este script no SQL Editor do Supabase:
 
 `supabase/sql/2026-03-10_display-name-and-period-leaderboard.sql`
 

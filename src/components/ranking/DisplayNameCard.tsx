@@ -14,11 +14,36 @@ function isLikelyEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)
 }
 
-function sanitizeInitialName(value: string | null | undefined): string {
+function sanitizeName(value: string | null | undefined): string {
   const trimmed = value?.trim() ?? ''
   if (!trimmed) return ''
   if (isLikelyEmail(trimmed)) return ''
   return trimmed
+}
+
+async function readCurrentPublicName(userId: string): Promise<string> {
+  const withDisplay = await supabase
+    .from('profiles')
+    .select('display_name,apelido_publico,nome')
+    .eq('id', userId)
+    .maybeSingle<ProfileNameRow>()
+
+  let data = withDisplay.data
+
+  if (withDisplay.error && withDisplay.error.message.includes('display_name')) {
+    const withoutDisplay = await supabase
+      .from('profiles')
+      .select('apelido_publico,nome')
+      .eq('id', userId)
+      .maybeSingle<ProfileNameRow>()
+    data = withoutDisplay.data
+  }
+
+  return (
+    sanitizeName(data?.display_name) ||
+    sanitizeName(data?.apelido_publico) ||
+    sanitizeName(data?.nome)
+  )
 }
 
 export function DisplayNameCard() {
@@ -45,33 +70,10 @@ export function DisplayNameCard() {
       }
 
       setUserId(user.id)
-
-      const withDisplay = await supabase
-        .from('profiles')
-        .select('display_name,apelido_publico,nome')
-        .eq('id', user.id)
-        .maybeSingle<ProfileNameRow>()
+      const currentName = await readCurrentPublicName(user.id)
 
       if (!active) return
-
-      let profileData = withDisplay.data
-
-      if (withDisplay.error && withDisplay.error.message.includes('display_name')) {
-        const withoutDisplay = await supabase
-          .from('profiles')
-          .select('apelido_publico,nome')
-          .eq('id', user.id)
-          .maybeSingle<ProfileNameRow>()
-        if (!active) return
-        profileData = withoutDisplay.data
-      }
-
-      const initialName =
-        sanitizeInitialName(profileData?.display_name) ||
-        sanitizeInitialName(profileData?.apelido_publico) ||
-        sanitizeInitialName(profileData?.nome)
-
-      setDraftName(initialName)
+      setDraftName(currentName)
       setLoading(false)
     }
 
@@ -112,41 +114,64 @@ export function DisplayNameCard() {
     setSaving(true)
 
     try {
+      // 1) Preferred save path
       const rpcResult = await supabase.rpc('set_my_display_name', {
         p_display_name: normalized,
       })
 
-      if (!rpcResult.error) {
+      if (rpcResult.error && !rpcResult.error.message.includes('not authenticated')) {
+        // Continue to fallback path
+      }
+
+      // Verify if it actually persisted
+      let persistedName = await readCurrentPublicName(userId)
+      if (persistedName.localeCompare(normalized, undefined, { sensitivity: 'accent' }) === 0) {
+        setDraftName(persistedName)
         setSuccessMessage('Nome público salvo com sucesso.')
         return
       }
 
-      // Fallback while script is not applied: update profile nickname directly.
-      const updateDisplay = await supabase
-        .from('profiles')
-        .update({ display_name: normalized, apelido_publico: normalized })
-        .eq('id', userId)
-
-      if (!updateDisplay.error) {
-        setSuccessMessage('Nome público salvo com sucesso.')
-        return
+      // 2) Fallback with upsert for new users without profile row
+      const basePayload = {
+        id: userId,
+        apelido_publico: normalized,
+        nome: normalized,
+        is_admin: false,
+        current_streak: 0,
+        best_streak: 0,
+        created_at: new Date().toISOString(),
       }
 
-      if (updateDisplay.error.message.includes('display_name')) {
-        const updateLegacy = await supabase
+      const upsertWithDisplay = await supabase.from('profiles').upsert(
+        {
+          ...basePayload,
+          display_name: normalized,
+        },
+        { onConflict: 'id' },
+      )
+
+      if (upsertWithDisplay.error && upsertWithDisplay.error.message.includes('display_name')) {
+        const legacyUpsert = await supabase
           .from('profiles')
-          .update({ apelido_publico: normalized })
-          .eq('id', userId)
+          .upsert(basePayload, { onConflict: 'id' })
 
-        if (!updateLegacy.error) {
-          setSuccessMessage('Nome público salvo com sucesso.')
-          return
+        if (legacyUpsert.error) {
+          throw new Error(legacyUpsert.error.message)
         }
-
-        throw new Error(updateLegacy.error.message)
+      } else if (upsertWithDisplay.error) {
+        throw new Error(upsertWithDisplay.error.message)
       }
 
-      throw new Error(updateDisplay.error.message)
+      persistedName = await readCurrentPublicName(userId)
+
+      if (persistedName.localeCompare(normalized, undefined, { sensitivity: 'accent' }) !== 0) {
+        throw new Error(
+          'Não consegui confirmar a gravação no Supabase. Rode o script SQL novamente e teste.',
+        )
+      }
+
+      setDraftName(persistedName)
+      setSuccessMessage('Nome público salvo com sucesso.')
     } catch (error) {
       const message =
         error instanceof Error
@@ -180,7 +205,7 @@ export function DisplayNameCard() {
               value={draftName}
               onChange={(event) => setDraftName(event.target.value)}
               maxLength={24}
-              placeholder="Ex.: Ana Luisa"
+              placeholder="Ex.: Thales"
               autoComplete="off"
             />
             <button type="submit" disabled={saving}>
