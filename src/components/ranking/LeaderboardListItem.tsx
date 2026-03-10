@@ -9,7 +9,7 @@ interface LeaderboardListItemProps {
 const trendLabel = {
   up: 'Subiu',
   down: 'Caiu',
-  stable: 'Estavel',
+  stable: 'Estável',
 }
 
 export function LeaderboardListItem({ entry, category }: LeaderboardListItemProps) {

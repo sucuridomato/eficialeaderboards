@@ -76,12 +76,12 @@ export function RankingPage() {
 
         <p className="ranking-live-chip">
           Tempo real ativo
-          {lastSyncAt ? ` - Ultima atualizacao as ${lastSyncAt}` : ''}
+          {lastSyncAt ? ` - Última atualização às ${lastSyncAt}` : ''}
         </p>
 
         {errorMessage ? (
           <section className="ranking-panel ranking-error">
-            <h2>Nao foi possivel carregar o ranking agora.</h2>
+            <h2>Não foi possível carregar o ranking agora.</h2>
             <p>{errorMessage}</p>
           </section>
         ) : null}

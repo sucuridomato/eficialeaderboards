@@ -4,9 +4,9 @@ export function EmptyLeaderboardState() {
       <div className="empty-state__icon" aria-hidden>
         #
       </div>
-      <h2>Nenhum ranking disponivel ainda neste periodo.</h2>
+      <h2>Nenhum ranking disponível ainda neste período.</h2>
       <p>
-        Assim que os usuarios registrarem estudos, o ranking sera atualizado em tempo real.
+        Assim que os usuários registrarem estudos, o ranking será atualizado em tempo real.
       </p>
     </section>
   )

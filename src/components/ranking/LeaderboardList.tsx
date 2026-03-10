@@ -10,7 +10,7 @@ export function LeaderboardList({ entries, category }: LeaderboardListProps) {
   return (
     <section className="ranking-panel">
       <div className="ranking-panel__header">
-        <h2>Classificacao geral</h2>
+        <h2>Classificação geral</h2>
       </div>
 
       {entries.length > 0 ? (
@@ -21,7 +21,7 @@ export function LeaderboardList({ entries, category }: LeaderboardListProps) {
         </ul>
       ) : (
         <p className="current-user-card__hint">
-          Ainda nao ha mais usuarios com pontuacao nesta categoria.
+          Ainda não há mais usuários com pontuação nesta categoria.
         </p>
       )}
     </section>

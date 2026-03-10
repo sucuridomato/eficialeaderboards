@@ -9,7 +9,7 @@ const periodOptions: RankingPeriod[] = ['today', 'week', 'month', 'all']
 
 export function PeriodTabs({ activePeriod, onChange }: PeriodTabsProps) {
   return (
-    <section className="ranking-filter-card" aria-label="Filtro de periodo">
+    <section className="ranking-filter-card" aria-label="Filtro de período">
       <div className="ranking-tabs">
         {periodOptions.map((period) => (
           <button

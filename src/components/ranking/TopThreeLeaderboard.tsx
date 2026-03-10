@@ -26,9 +26,9 @@ export function TopThreeLeaderboard({ entries, category }: TopThreeLeaderboardPr
           <article
             key={entry.id}
             className={`top-three-card top-three-card--${entry.position}`}
-            aria-label={`${entry.position} lugar ${entry.display_name}`}
+            aria-label={`${entry.position}º lugar ${entry.display_name}`}
           >
-            <span className="top-three-card__place">{entry.position}o</span>
+            <span className="top-three-card__place">{entry.position}º</span>
             <div className="top-three-card__avatar">{entry.avatar_initial}</div>
             <p className="top-three-card__name">{entry.display_name}</p>
             <p className="top-three-card__value">{formatRankingMetric(entry.value, category)}</p>

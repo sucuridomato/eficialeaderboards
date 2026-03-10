@@ -16,6 +16,15 @@ interface ProfileRow {
   nome: string | null
 }
 
+interface WeeklyLeaderboardRpcRow {
+  nome: string | null
+  streak: number | null
+  questoes: number | null
+  flashcards: number | null
+  minutos_revisao: number | null
+  [key: string]: unknown
+}
+
 interface AggregatedUserMetrics {
   questions: number
   flashcards: number
@@ -27,6 +36,13 @@ interface AggregatedUserMetrics {
 
 const currentUserId = import.meta.env.VITE_CURRENT_USER_ID as string | undefined
 const currentUserName = import.meta.env.VITE_CURRENT_USER_NAME as string | undefined
+
+const weeklyPeriodScale: Record<RankingPeriod, number> = {
+  today: 1 / 7,
+  week: 1,
+  month: 4,
+  all: 16,
+}
 
 function formatDateKey(date: Date): string {
   const year = date.getFullYear()
@@ -133,7 +149,54 @@ function avatarInitialFromName(name: string): string {
   return firstLetter || '?'
 }
 
-export async function fetchLeaderboard(
+function parseNumericValue(value: unknown): number {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : 0
+}
+
+function buildStableIdFromName(name: string, index: number): string {
+  const normalized = name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+
+  return normalized ? `${normalized}-${index + 1}` : `usuario-${index + 1}`
+}
+
+function resolveRpcTrend(streak: number): RankingTrend {
+  if (streak >= 3) return 'up'
+  if (streak <= 0) return 'down'
+  return 'stable'
+}
+
+function extractTotalMinutesFromRpc(row: WeeklyLeaderboardRpcRow): number {
+  const candidates = [
+    'total_minutes',
+    'total_minutos',
+    'tempo_estudo',
+    'minutos_estudo',
+    'tempo_total',
+    'minutos_total',
+  ]
+
+  for (const key of candidates) {
+    const value = row[key]
+    const numericValue = parseNumericValue(value)
+    if (numericValue > 0) return numericValue
+  }
+
+  const fallbackFromQuestions = parseNumericValue(row.questoes) * 2
+  const fallbackFromReview = parseNumericValue(row.minutos_revisao)
+  return Math.round(fallbackFromQuestions + fallbackFromReview)
+}
+
+function scaleWeeklyMetric(value: number, period: RankingPeriod): number {
+  return Math.max(Math.round(value * weeklyPeriodScale[period]), 0)
+}
+
+async function fetchFromDailyLogs(
   period: RankingPeriod,
   category: RankingCategory,
 ): Promise<RankingEntry[]> {
@@ -199,12 +262,10 @@ export async function fetchLeaderboard(
     .select('id,apelido_publico,nome')
     .in('id', userIds)
 
-  if (profilesError) {
-    throw new Error(profilesError.message)
-  }
-
   const profileById = new Map(
-    ((profilesData ?? []) as ProfileRow[]).map((profile) => [profile.id, profile]),
+    (
+      profilesError ? [] : ((profilesData ?? []) as ProfileRow[])
+    ).map((profile) => [profile.id, profile]),
   )
 
   const entries: Omit<RankingEntry, 'position'>[] = []
@@ -253,6 +314,94 @@ export async function fetchLeaderboard(
       ...entry,
       position: index + 1,
     }))
+}
+
+async function fetchFromWeeklyRpc(
+  period: RankingPeriod,
+  category: RankingCategory,
+): Promise<RankingEntry[]> {
+  const { data, error } = await supabase.rpc('get_weekly_leaderboard')
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const rows = (data ?? []) as WeeklyLeaderboardRpcRow[]
+  if (!rows.length) {
+    return []
+  }
+
+  const entries: Omit<RankingEntry, 'position'>[] = []
+
+  rows.forEach((row, index) => {
+    const displayName =
+      sanitizeDisplayName(row.nome) ??
+      sanitizeDisplayName(typeof row.display_name === 'string' ? row.display_name : null) ??
+      `Usuário ${index + 1}`
+
+    const questions = scaleWeeklyMetric(parseNumericValue(row.questoes), period)
+    const flashcards = scaleWeeklyMetric(parseNumericValue(row.flashcards), period)
+    const reviewMinutes = scaleWeeklyMetric(parseNumericValue(row.minutos_revisao), period)
+    const totalMinutes = scaleWeeklyMetric(extractTotalMinutesFromRpc(row), period)
+
+    const categoryValue = metricFromCategory(
+      {
+        questions,
+        flashcards,
+        total_minutes: totalMinutes,
+        review_minutes: reviewMinutes,
+      },
+      category,
+    )
+
+    if (categoryValue <= 0) return
+
+    const isCurrentUser =
+      (currentUserName &&
+        displayName.localeCompare(currentUserName, undefined, { sensitivity: 'accent' }) ===
+          0) ||
+      false
+
+    entries.push({
+      id: buildStableIdFromName(displayName, index),
+      display_name: displayName,
+      avatar_initial: avatarInitialFromName(displayName),
+      questions,
+      flashcards,
+      total_minutes: totalMinutes,
+      review_minutes: reviewMinutes,
+      trend: resolveRpcTrend(parseNumericValue(row.streak)),
+      is_current_user: isCurrentUser,
+      value: categoryValue,
+    })
+  })
+
+  return entries
+    .sort((a, b) => {
+      const diff = b.value - a.value
+      if (diff !== 0) return diff
+      return a.display_name.localeCompare(b.display_name)
+    })
+    .map((entry, index) => ({
+      ...entry,
+      position: index + 1,
+    }))
+}
+
+export async function fetchLeaderboard(
+  period: RankingPeriod,
+  category: RankingCategory,
+): Promise<RankingEntry[]> {
+  try {
+    const dailyEntries = await fetchFromDailyLogs(period, category)
+    if (dailyEntries.length > 0) {
+      return dailyEntries
+    }
+  } catch {
+    // Se a leitura direta falhar por política/permissão, segue para RPC de leaderboard.
+  }
+
+  return fetchFromWeeklyRpc(period, category)
 }
 
 export function subscribeToLeaderboardUpdates(onChange: () => void): () => void {

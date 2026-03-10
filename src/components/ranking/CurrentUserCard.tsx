@@ -15,15 +15,15 @@ interface CurrentUserCardProps {
 
 function getMotivation(position: number): string {
   if (position <= 3) return 'Ritmo de elite. Continue sustentando seu foco.'
-  if (position <= 10) return 'Voce esta perto do Top 10. Mantenha a consistencia.'
-  return 'Cada sessao conta. Continue revisando para subir no ranking.'
+  if (position <= 10) return 'Você está perto do Top 10. Mantenha a consistência.'
+  return 'Cada sessão conta. Continue revisando para subir no ranking.'
 }
 
 export function CurrentUserCard({ currentUser, period, category }: CurrentUserCardProps) {
   return (
     <aside className="ranking-panel current-user-card">
       <div className="ranking-panel__header">
-        <h2>Sua posicao</h2>
+        <h2>Sua posição</h2>
       </div>
 
       {currentUser ? (
@@ -33,13 +33,13 @@ export function CurrentUserCard({ currentUser, period, category }: CurrentUserCa
             #{currentUser.position} em {CATEGORY_LABELS[category]}
           </p>
           <p className="current-user-card__value">
-            Voce fez {formatRankingMetric(currentUser.value, category)}
+            Você fez {formatRankingMetric(currentUser.value, category)}
           </p>
           <p className="current-user-card__hint">{getMotivation(currentUser.position)}</p>
         </>
       ) : (
         <p className="current-user-card__hint">
-          Sem dados disponiveis para mostrar sua posicao neste periodo.
+          Sem dados disponíveis para mostrar sua posição neste período.
         </p>
       )}
     </aside>

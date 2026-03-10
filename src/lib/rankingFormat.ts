@@ -6,12 +6,12 @@ export function formatRankingMetric(value: number, category: RankingCategory): s
   const formattedValue = numberFormatter.format(value)
   switch (category) {
     case 'questions':
-      return `${formattedValue} questoes`
+      return `${formattedValue} questões`
     case 'flashcards':
       return `${formattedValue} flashcards`
     case 'totalMinutes':
       return `${formattedValue} min`
     case 'reviewMinutes':
-      return `${formattedValue} min de revisao`
+      return `${formattedValue} min de revisão`
   }
 }
